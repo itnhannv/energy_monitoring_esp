@@ -1,5 +1,4 @@
-//#include <ThingSpeak.h>
-//#include <ThingspeakClient.h>
+
 #include <Blynk.h>
 #include <ESP8266WebServer.h>
 #include "Pzem004t_V3.h"
@@ -16,24 +15,28 @@
 #define CS1 D3
 #define CS2 D4
 #define BUTTON D1
-//Pzem004t_V3 pzem(Tx1, Rx1);
 Pzem004t_V3 pzem(&Serial);
 
 BlynkTimer timer;
 ///Wifi
 void sendBlynkSensor();
-char auth[] = "bz85ORZ6EwzN7dSThGuwr-o7NqJUbt4T"; // Blynk Token
-//const char *ssid = "End Game";                     // SSID WiFi
-//const char *password = "1qaz2wsx"; 
-const char *ssid = "GHTK T7";                     // SSID 
-const char *password = "vanphongtang7";           // 
+char auth[] = "zKkbGrSpERo4x-lSq8zx0WlMpf5ih-9o"; // Blynk Token
+#define BLYNK_FIRMWARE_VERSION        "0.1.0"
+#define BLYNK_PRINT Serial 
+#define BLYNK_TEMPLATE_ID "TMPL2DQKOJM3"
+#define BLYNK_TEMPLATE_NAME "Solar  Power Mornitoring"
+#define BLYNK_AUTH_TOKEN "zKkbGrSpERo4x-lSq8zx0WlMpf5ih-9o"
+
+const char *ssid = "End Game";                     // SSID 
+const char *password = "1qaz2wsx"; 
+//const char *ssid = "GHTK";                     // SSID 
+//const char *password = "Honcanhanh";           // 
 
 // Location to check weather 
 
 const String latitude = "20.868763"; // Lôi Khê
 const String longitude = "106.225604";
-
-const String key = "ca66835ddbaa496c9d11aee5f48fd28e"; // auth key
+const String key = "6a14a6b2777b4219a04dd79bcda97a2b"; // weather auth key
 
 // clock center point
 const int clockCenterX = 32;
@@ -58,9 +61,21 @@ Ticker flip;
 HTTPClient http;
 int button_count = 1;
 String StrTrangThai = "";
+
 float solar_wH = 0.0;
 float onGrid_wH = 0.0;
 float load_wH = 0.0;
+
+float upGrid_wH = 0.0;
+float downGrid_wH = 0.0;
+
+float pre_solar_wH = 0.0;
+float pre_onGrid_wH = 0.0;
+float pre_load_wH = 0.0;
+
+float today_solar_wH = 0.0;
+float today_onGrid_wH = 0.0;
+float today_load_wH = 0.0;
 
 String IPaddress;
 float voltage = 0.0;
@@ -71,7 +86,10 @@ float power_load = 0.0;
 float power_factor = 0.95;
 float freq = 50.0;
 float power_solar = 0.0;
+
 float power_onGrid = 0.0;
+float power_upGrid = 0.0;
+float power_downGrid = 0.0;
 
 void setup()
 {
@@ -95,22 +113,26 @@ void setup()
 
   configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
   updateTime();
+  while (nam.toInt() < 2000){
+    
+    updateTime();
+    Serial.println("năm < 2000");
+    delay(1000);
+    }
+  Serial.println("init time done ");
   flip.attach(1, interrupTimer);                   // 
   currentWeather(latitude, longitude, key); // 
-
+  Serial.println("init weather data done");
   delay(1000);
 }
 
 void loop()
 {
-  if (nam.toInt() < 2000) 
+  //if (  sec == 01  )
+  if ( (  minute == 0 && sec ==01 )|| ( minute == 30 && sec ==01) )
   { 
-    updateTime();
-  }
-  if ( minute == 0 || minute == 30 )
-  { 
-  
     currentWeather(latitude, longitude, key);
+    Serial.println("requested weather data");
   }
   
   if ((button_count % 2) == 1)
@@ -123,8 +145,8 @@ void loop()
     lcd.Clear();
     display_energy();
   }
-  //Blynk.run();
-  //timer.run();
+  Blynk.run();
+  timer.run();
 }
 
 ICACHE_RAM_ATTR void buttonCount()
@@ -139,45 +161,80 @@ ICACHE_RAM_ATTR void buttonCount()
 void getDataPZEM()
 {
   // readMillis = millis();
-  if (ngay == "01" && gio == "00" && phut == "00" && giay == "00")
+  if (ngay == "01" && gio == "00" && phut == "00" && giay == "01")
   { ///reset data vào đầu tháng
-    pzem.resetEnergy();
-  }
+    
   digitalWrite(CS1, LOW);
-  digitalWrite(CS2, HIGH);
+  digitalWrite(CS2, HIGH); 
+  delay(50);
+  pzem.resetEnergy();
+  delay(100);
+  digitalWrite(CS1, HIGH);
+  digitalWrite(CS2, LOW);
+  delay(50);
+  pzem.resetEnergy();
+  delay(100);
+  }
+  //read data pzem LOAD , pin D4
+  digitalWrite(CS1, LOW);
+  digitalWrite(CS2, HIGH); 
   delay(50);
   pzem_info pzemData1 = pzem.getData();
-
+  delay(100);
+  //read data pzem Solar , pin D3
   digitalWrite(CS1, HIGH);
   digitalWrite(CS2, LOW);
   delay(50);
   pzem_info pzemData2 = pzem.getData();
+  delay(100);
 
+  if (gio == "00" && phut == "00" && giay == "01")
+  { 
+    pre_solar_wH = pzemData2.energy;
+    pre_load_wH = pzemData1.energy;
+  }
+//real data 
+//  voltage = pzemData1.volt;
+//  power_factor = pzemData1.powerFactor;
+//  freq = pzemData1.freq;
+//
+//  load_Amp = pzemData1.ampe;
+//  load_wH = pzemData1.energy;
+//  power_load = pzemData1.power;
+//
+//  solar_Amp = pzemData2.ampe;
+//  solar_wH = pzemData2.energy;
+//  power_solar = pzemData2.power;
+//  
+//run for test data 
+   voltage = random(215, 235) / 0.99;
+   solar_Amp = random(100, 300) / 135.5;                    
+   load_Amp = random(100, 900) / 111.1;
+   power_factor = 0.9;
+   power_load = voltage * load_Amp;
+   power_solar = voltage * solar_Amp;
 
-  voltage = pzemData1.volt;
-  power_factor = pzemData2.powerFactor;
-  freq = pzemData1.freq;
+   solar_wH += power_solar / 3600;
+   load_wH += power_load / 3600;
+///
+   grid_Amp = load_Amp - solar_Amp;  
+   power_onGrid = power_load - power_solar;
+   if (power_onGrid < 0){
+       upGrid_wH -= power_onGrid/3600;
+    
+    }else {
+      downGrid_wH += power_onGrid/3600;
 
-  load_Amp = pzemData1.ampe;
-  load_wH = pzemData1.energy;
-  power_load = pzemData1.power;
+      }
+   
+   //onGrid_wH += power_onGrid / 3600;
 
-  solar_Amp = pzemData2.ampe;
-  solar_wH = pzemData2.energy;
-  power_solar = pzemData2.power;
+   today_solar_wH = solar_wH - pre_solar_wH ;
+   today_load_wH =  load_wH - pre_load_wH ;
+   downGrid_wH = today_load_wH + upGrid_wH - today_solar_wH;
   
-  IPaddress = WiFi.localIP().toString();
-  //voltage = random(215, 235) / 0.99;
-  // solar_Amp = random(100, 300) / 135.5;                    
-  // load_Amp = random(100, 900) / 111.1;
-  // grid_Amp = load_Amp - solar_Amp;
-  // power_load = voltage * load_Amp;
-  // power_solar = voltage * solar_Amp;
-  power_onGrid = power_load - power_solar;
-  //solar_wH += power_solar / 3600;
-  //onGrid_wH += power_onGrid / 3600;
-  onGrid_wH = load_wH - solar_wH;
- // load_wH += power_load / 3600;
+
+///
 }
 void sendBlynkSensor()
 {
@@ -185,10 +242,15 @@ void sendBlynkSensor()
   Blynk.virtualWrite(V0, String(solar_Amp, 2) + "A - " + String(power_solar, 1) + "W - " + String(solar_wH, 1) + "Wh");
   Blynk.virtualWrite(V1, String(load_Amp, 2) + "A - " + String(power_load, 1) + "W - " + String(load_wH, 1) + "Wh");
   Blynk.virtualWrite(V2, power_solar);
-  Blynk.virtualWrite(V3, solar_wH);
+  Blynk.virtualWrite(V3, upGrid_wH);
   Blynk.virtualWrite(V4, power_load);
   Blynk.virtualWrite(V5, power_onGrid);
+  
   Blynk.virtualWrite(V6, voltage);
+  Blynk.virtualWrite(V7, power_factor);
+  Blynk.virtualWrite(V8, today_solar_wH);
+  Blynk.virtualWrite(V9, downGrid_wH);
+  
   if (power_onGrid < 0)
   {
     StrTrangThai = "Đang đẩy lưới EVN " + String(power_onGrid) + " w";
@@ -330,6 +392,9 @@ void interrupTimer()
   { // Sau 1 ngày cập nhật thời gian 1 lần
     hour = 0;
     updateTime();
+    Serial.println("cập nhật thời gian sau 24h");
+    upGrid_wH =0; // reset daily data
+    downGrid_wH =0;
   }
 
 }
@@ -338,7 +403,7 @@ void updateTime()
 {
   time_t now = time(nullptr);
   String data = ctime(&now);
-  //  Serial.println(data);
+ // Serial.println("updated time");
   
   String ngayTrongTuan = data.substring(0, 3);
   String month = data.substring(4, 7);
@@ -482,7 +547,7 @@ void currentWeather(String latitude, String longitude, String key)
   if (http.GET() == HTTP_CODE_OK)
   {
     String data = http.getString();
-    //    Serial.println(data);
+    //Serial.println("requested weather data");
     DynamicJsonDocument jsonBuffer(1200);
     DeserializationError error = deserializeJson(jsonBuffer, (char *)data.c_str());
     temp = jsonBuffer["data"][0]["temp"].as<int>();
@@ -514,18 +579,24 @@ void displayCurrentWeather(int x, int y, String nhietdo, String doam)
 
 void iconWeather(int x, int y, int code)
 { //https://www.weatherbit.io/api/codes  
+
+  if(code == 200 || code == 201|| code == 202){ code = 202; }
+  if(code == 230 || code == 231|| code == 232){ code = 231; }
+  if(code == 300 || code == 301|| code == 302 || code == 500 || code == 501 || code == 502 || code == 511 || code == 520 ||code == 521||code == 522 ){ code = 501; }
+  if(code == 800 || code == 802 ){ code = 800; }
+  
   switch (code)
   {
-  case 202:
+  case  202 :
     lcd.Bitmap(x, y, 24, 24, lighting_rain, BLACK);
     break;
-  case 233:
+  case  231:
     lcd.Bitmap(x, y, 24, 24, lighting, BLACK);
     break;
-  case 623:
+  case 501:
     lcd.Bitmap(x, y, 24, 24, rain, BLACK);
     break;
-  case 800:
+  case 800 :
     if (hour < 18 && hour > 5)
       lcd.Bitmap(x, y, 24, 24, clear_sky, BLACK);
     else
@@ -537,7 +608,7 @@ void iconWeather(int x, int y, int code)
     else
       lcd.Bitmap(x, y, 24, 24, night_cloud, BLACK);
     break;
-  case 804:
+  case  804:
     lcd.Bitmap(x, y, 24, 24, cloudy, BLACK);
     break;
   }
